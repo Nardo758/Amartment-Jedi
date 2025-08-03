@@ -1,0 +1,12 @@
+# System packages for Streamlit Cloud
+# This file tells Streamlit Cloud what system packages to install
+
+# For web scraping (if needed)
+# chromium
+# chromium-driver
+
+# For better performance
+# build-essential
+
+# Note: Most deployments won't need any system packages
+# Only uncomment lines above if you get specific errors
