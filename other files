@@ -1,1 +1,11 @@
 
+# Initialize Git
+git init
+git add .
+git commit -m "Initial commit: ApartmentIQ AI platform"
+
+# Create repository on GitHub with name: apartmentiq-ai-platform
+# Then connect and push:
+git remote add origin https://github.com/YOUR_USERNAME/apartmentiq-ai-platform.git
+git branch -M main
+git push -u origin main
