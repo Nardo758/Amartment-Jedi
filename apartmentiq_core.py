@@ -1,3 +1,12 @@
+# Optional email imports for Streamlit Cloud compatibility
+try:
+    import smtplib
+    from email.mime.text import MimeText
+    from email.mime.multipart import MimeMultipart
+    EMAIL_AVAILABLE = True
+except ImportError:
+    EMAIL_AVAILABLE = False
+    print("⚠️ Email functionality not available in this environment")
 #!/usr/bin/env python3
 """
 ApartmentIQ: AI-Powered Vacancy & Relocation Platform
