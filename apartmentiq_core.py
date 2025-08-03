@@ -1,115 +1,15 @@
-##!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 ApartmentIQ: AI-Powered Vacancy & Relocation Platform - Streamlit App
 """
 import streamlit as st
-import pandas as pd
-import numpy as np
-from datetime import datetime
-from dataclasses import asdict
-import logging
-
-# [Keep all your existing class definitions...]
-# (ApartmentScraper, MarketAnalyzer, AIOfferGenerator, ApartmentIQ classes remain the same)
-
-def streamlit_app():
-    """Main Streamlit application"""
-    st.set_page_config(page_title="ApartmentIQ", layout="wide")
-    
-    # Custom CSS
-    st.markdown("""
-    <style>
-        .st-emotion-cache-1y4p8pa {padding: 2rem 1rem;}
-        .st-emotion-cache-1v0mbdj {border-radius: 8px;}
-        .highlight {background-color: #f5f5f5; padding: 1rem; border-radius: 8px;}
-    </style>
-    """, unsafe_allow_html=True)
-    
-    st.title("🏠 ApartmentIQ: AI-Powered Rental Negotiation")
-    st.markdown("Discover hidden rental opportunities and generate AI-optimized offers")
-    
-    with st.sidebar:
-        st.header("Your Preferences")
-        city = st.text_input("City", "Austin")
-        state = st.text_input("State", "TX")
-        max_budget = st.number_input("Max Budget ($)", 1000, 10000, 2500)
-        min_bedrooms = st.number_input("Min Bedrooms", 1, 5, 1)
-        analyze_btn = st.button("Analyze Market", type="primary")
-    
-    if analyze_btn:
-        with st.spinner("🚀 Scanning rental market for hidden opportunities..."):
-            # Initialize platform
-            apartment_iq = ApartmentIQ()
-            
-            # Create user profile from inputs
-            user_profile = UserProfile(
-                current_rent=max_budget + 100,
-                lease_expires="March 2025",
-                max_budget=max_budget,
-                work_lat=30.2672,
-                work_lng=-97.7431,
-                preferred_amenities=['gym', 'pet', 'parking'],
-                min_bedrooms=min_bedrooms,
-                max_commute_time=30
-            )
-            
-            # Run analysis
-            results = apartment_iq.run_analysis(city, state)
-            
-        # Display results
-        st.success("Analysis complete!")
-        
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Listings", results['total_listings'])
-        col2.metric("Hidden Opportunities", results['hidden_opportunities'])
-        col3.metric("Potential Monthly Savings", 
-                   f"${results['total_potential_monthly_savings']:,}")
-        
-        st.subheader("💡 Top AI-Generated Offers")
-        for i, offer in enumerate(results['top_offers'], 1):
-            savings = offer['original_price'] - offer['recommended_price']
-            
-            with st.expander(f"Offer #{i}: ${offer['recommended_price']:,} (Save ${savings:,})"):
-                cols = st.columns([1,2])
-                cols[0].metric("Original Price", f"${offer['original_price']:,}")
-                cols[0].metric("Your Savings", f"${savings:,}", 
-                              delta=f"{savings/offer['original_price']:.1%}")
-                cols[1].progress(offer['success_probability'], 
-                               text=f"Success Probability: {offer['success_probability']:.1%}")
-                
-                st.markdown("**Strategy:** " + offer['strategy'])
-                st.markdown("**Key Leverage Points:**")
-                for point in offer['leverage_points']:
-                    st.markdown(f"- {point}")
-                
-                with st.expander("📧 View Email Template"):
-                    st.code(offer['email_template'])
-
-if __name__ == "__main__":
-    # Initialize logging
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    logger = logging.getLogger(__name__)
-    
-    # Run Streamlit app
-    streamlit_app()!/usr/bin/env python3
-"""
-ApartmentIQ: AI-Powered Vacancy & Relocation Platform
-Core data processing and analysis engine - Streamlit Cloud Compatible
-"""
-
 import requests
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-import json
-import time
 from dataclasses import dataclass, asdict
-from typing import List, Dict, Optional, Tuple
-import re
-from bs4 import BeautifulSoup
 import logging
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import LinearRegression
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -183,7 +83,7 @@ class ApartmentScraper:
         logger.info(f"Scraping Apartments.com for {city}, {state}")
         
         try:
-            # Mock data for demonstration - replace with real scraping in production
+            # Mock data for demonstration
             mock_listings = [
                 {
                     'id': 'apt_001',
@@ -237,14 +137,10 @@ class ApartmentScraper:
     
     def scrape_zillow(self, city: str, state: str) -> List[PropertyListing]:
         """Scrape Zillow for rental listings"""
-        logger.info(f"Scraping Zillow for {city}, {state}")
         return []
     
     def scrape_craigslist(self, city: str, state: str) -> List[PropertyListing]:
         """Scrape Craigslist for rental listings"""
-        logger.info(f"Scraping Craigslist for {city}, {state}")
-        
-        # Mock hidden inventory from Craigslist
         hidden_listings = [
             {
                 'id': 'cl_001',
@@ -280,39 +176,30 @@ class ApartmentScraper:
         return listings
 
 class MarketAnalyzer:
-    """Analyze market conditions and trends - Streamlit Cloud Compatible"""
+    """Analyze market conditions and trends"""
     
     def __init__(self):
-        # Store data in memory instead of database for Streamlit Cloud
         self.listings_data = []
         
     def store_listings(self, listings: List[PropertyListing]):
-        """Store scraped listings in memory"""
         self.listings_data = listings
-        logger.info(f"Stored {len(listings)} listings in memory")
         
     def analyze_market_conditions(self, city: str) -> MarketAnalysis:
-        """Analyze current market conditions"""
-        # Return realistic market analysis data
         return MarketAnalysis(
             avg_days_on_market=34.0,
             price_reduction_rate=0.18,
             demand_index=72,
-            seasonal_factor=0.85,  # Winter reduction
+            seasonal_factor=0.85,
             competitive_units=23,
             median_rent=2300
         )
     
     def identify_stale_inventory(self, listings: List[PropertyListing], 
                                 threshold_days: int = 45) -> List[PropertyListing]:
-        """Identify properties that have been on market too long"""
-        stale_listings = [
+        return [
             listing for listing in listings 
             if listing.days_on_market >= threshold_days
         ]
-        
-        logger.info(f"Found {len(stale_listings)} stale inventory opportunities")
-        return stale_listings
 
 class AIOfferGenerator:
     """AI-powered offer generation engine"""
@@ -322,39 +209,31 @@ class AIOfferGenerator:
         self.train_model()
         
     def train_model(self):
-        """Train the pricing model on historical data"""
-        # Mock training data for demonstration
         np.random.seed(42)
         n_samples = 1000
         
         X = np.column_stack([
-            np.random.randint(1, 150, n_samples),  # days_on_market
-            np.random.choice([0, 1], n_samples),   # is_individual_owner
-            np.random.randint(1200, 3500, n_samples),  # market_rent
-            np.random.randint(1, 5, n_samples),    # price_reductions
-            np.random.uniform(0.7, 1.2, n_samples)  # seasonal_factor
+            np.random.randint(1, 150, n_samples),
+            np.random.choice([0, 1], n_samples),
+            np.random.randint(1200, 3500, n_samples),
+            np.random.randint(1, 5, n_samples),
+            np.random.uniform(0.7, 1.2, n_samples)
         ])
         
-        # Target: percentage reduction from asking price
         y = (
-            X[:, 0] * 0.002 +  # days on market effect
-            X[:, 1] * 0.05 +   # individual owner more flexible
-            X[:, 3] * 0.03 +   # previous reductions indicate flexibility
-            np.random.normal(0, 0.02, n_samples)  # noise
+            X[:, 0] * 0.002 +
+            X[:, 1] * 0.05 +
+            X[:, 3] * 0.03 +
+            np.random.normal(0, 0.02, n_samples)
         )
-        y = np.clip(y, 0, 0.25)  # Cap at 25% reduction
+        y = np.clip(y, 0, 0.25)
         
         self.model = RandomForestRegressor(n_estimators=100, random_state=42)
         self.model.fit(X, y)
         
-        logger.info("AI pricing model trained successfully")
-    
     def generate_smart_offer(self, listing: PropertyListing, 
                            market_analysis: MarketAnalysis,
                            user_profile: UserProfile) -> SmartOffer:
-        """Generate AI-powered offer for a property"""
-        
-        # Prepare features for model
         is_individual_owner = 1 if listing.owner_type == 'individual' else 0
         price_reductions = len(listing.price_history) - 1
         
@@ -366,15 +245,9 @@ class AIOfferGenerator:
             market_analysis.seasonal_factor
         ]])
         
-        # Predict optimal reduction percentage
         reduction_pct = self.model.predict(features)[0]
         recommended_price = int(listing.rent * (1 - reduction_pct))
         
-        # Calculate carrying cost and owner motivation
-        daily_carrying_cost = listing.rent * 0.03 / 30  # 3% of rent per month
-        total_loss = daily_carrying_cost * listing.days_on_market
-        
-        # Determine strategy based on market conditions
         if listing.days_on_market > 60:
             strategy = "Aggressive but Fair"
         elif listing.days_on_market > 30:
@@ -382,7 +255,6 @@ class AIOfferGenerator:
         else:
             strategy = "Conservative Approach"
             
-        # Calculate success probability
         base_probability = 0.6
         if listing.owner_type == 'individual':
             base_probability += 0.15
@@ -393,21 +265,17 @@ class AIOfferGenerator:
             
         success_probability = min(0.95, base_probability)
         
-        # Generate leverage points
         leverage_points = []
         if listing.days_on_market > 45:
-            leverage_points.append(f"{listing.days_on_market} days vacant = ${int(total_loss):,} in lost revenue")
+            leverage_points.append(f"{listing.days_on_market} days vacant")
         if market_analysis.seasonal_factor < 1.0:
             leverage_points.append("Below market rent in winter season")
         leverage_points.append("Immediate qualified tenant")
-        leverage_points.append("No agent commission needed")
         
-        # Generate email template
         email_template = self._generate_email_template(
             listing, recommended_price, listing.rent - recommended_price, leverage_points
         )
         
-        # Generate reasoning
         reasoning = f"""
         Property has been vacant for {listing.days_on_market} days. 
         Owner is a {listing.owner_type} likely motivated by cash flow. 
@@ -429,40 +297,25 @@ class AIOfferGenerator:
     def _generate_email_template(self, listing: PropertyListing, 
                                 offer_price: int, savings: int,
                                 leverage_points: List[str]) -> str:
-        """Generate personalized email template"""
-        
-        template = f"""Subject: Immediate Lease Opportunity - {listing.address}
+        return f"""Subject: Immediate Lease Opportunity - {listing.address}
 
 Dear Property Manager,
 
-I hope this email finds you well. I'm writing regarding the {listing.bedrooms}BR/{listing.bathrooms}BA unit at {listing.address} that has been available.
-
-I'm a qualified tenant looking to secure housing immediately and would like to present a competitive offer:
+I hope this email finds you well. I'm writing regarding the {listing.bedrooms}BR/{listing.bathrooms}BA unit at {listing.address}.
 
 **Offer Details:**
 • Monthly Rent: ${offer_price:,}
 • Lease Term: 12 months 
 • Move-in Date: Within 30 days
-• Security Deposit: 1 month rent
-• No pets, non-smoker
 
 **Why This Works for You:**
 {chr(10).join(f'• {point}' for point in leverage_points)}
 
-I understand the market has been challenging, and I believe this offer reflects a fair value that benefits us both. I'm happy to provide income verification, references, and can sign a lease this week.
-
-Would you be available for a brief call to discuss this opportunity?
-
 Best regards,
-[Your Name]
-[Phone] | [Email]
-
-P.S. I'm also happy to consider a longer lease term if that would be beneficial."""
-
-        return template
+[Your Name]"""
 
 class ApartmentIQ:
-    """Main ApartmentIQ platform class - Streamlit Cloud Compatible"""
+    """Main ApartmentIQ platform class"""
     
     def __init__(self):
         self.scraper = ApartmentScraper()
@@ -470,62 +323,32 @@ class ApartmentIQ:
         self.offer_generator = AIOfferGenerator()
         
     def discover_opportunities(self, city: str, state: str) -> List[PropertyListing]:
-        """Discover apartment opportunities across multiple sources"""
-        logger.info(f"Discovering opportunities in {city}, {state}")
-        
         all_listings = []
-        
-        # Scrape multiple sources
-        apartments_com_listings = self.scraper.scrape_apartments_com(city, state)
-        all_listings.extend(apartments_com_listings)
-        
-        zillow_listings = self.scraper.scrape_zillow(city, state)
-        all_listings.extend(zillow_listings)
-        
-        craigslist_listings = self.scraper.scrape_craigslist(city, state)
-        all_listings.extend(craigslist_listings)
-        
-        # Store in memory instead of database
+        all_listings.extend(self.scraper.scrape_apartments_com(city, state))
+        all_listings.extend(self.scraper.scrape_zillow(city, state))
+        all_listings.extend(self.scraper.scrape_craigslist(city, state))
         self.analyzer.store_listings(all_listings)
-        
-        logger.info(f"Found {len(all_listings)} total listings")
         return all_listings
     
     def analyze_and_generate_offers(self, listings: List[PropertyListing],
                                    user_profile: UserProfile) -> List[SmartOffer]:
-        """Analyze market and generate smart offers"""
-        
-        # Analyze market conditions
         market_analysis = self.analyzer.analyze_market_conditions("Austin")
-        logger.info(f"Market analysis complete: {market_analysis.demand_index}/100 demand index")
-        
-        # Identify stale inventory (hidden opportunities)
         stale_listings = self.analyzer.identify_stale_inventory(listings)
         
-        # Generate smart offers for promising properties
         offers = []
         for listing in stale_listings:
-            # Filter by user preferences
             if (listing.rent <= user_profile.max_budget and 
                 listing.bedrooms >= user_profile.min_bedrooms):
-                
-                offer = self.offer_generator.generate_smart_offer(
+                offers.append(self.offer_generator.generate_smart_offer(
                     listing, market_analysis, user_profile
-                )
-                offers.append(offer)
+                ))
         
-        # Sort by success probability and savings potential
         offers.sort(key=lambda x: (x.success_probability, 
-                                  x.original_price - x.recommended_price), 
+                                 x.original_price - x.recommended_price), 
                    reverse=True)
-        
-        logger.info(f"Generated {len(offers)} smart offers")
         return offers
     
     def run_analysis(self, city: str = "Austin", state: str = "TX") -> Dict:
-        """Run complete ApartmentIQ analysis"""
-        
-        # Sample user profile
         user_profile = UserProfile(
             current_rent=2600,
             lease_expires="March 2025",
@@ -537,13 +360,9 @@ class ApartmentIQ:
             max_commute_time=30
         )
         
-        # Discover opportunities
         listings = self.discover_opportunities(city, state)
-        
-        # Generate offers
         offers = self.analyze_and_generate_offers(listings, user_profile)
         
-        # Calculate summary statistics
         total_potential_savings = sum(
             offer.original_price - offer.recommended_price 
             for offer in offers
@@ -551,7 +370,7 @@ class ApartmentIQ:
         
         avg_success_rate = np.mean([offer.success_probability for offer in offers]) if offers else 0
         
-        results = {
+        return {
             'total_listings': len(listings),
             'hidden_opportunities': len([l for l in listings if l.source == 'craigslist']),
             'smart_offers_generated': len(offers),
@@ -559,45 +378,64 @@ class ApartmentIQ:
             'avg_success_probability': avg_success_rate,
             'top_offers': [asdict(offer) for offer in offers[:3]]
         }
-        
-        return results
 
-def main():
-    """Main execution function - for testing only"""
-    try:
-        logger.info("Starting ApartmentIQ analysis...")
+def streamlit_app():
+    """Main Streamlit application"""
+    st.set_page_config(page_title="ApartmentIQ", layout="wide")
+    
+    st.title("🏠 ApartmentIQ: AI-Powered Rental Negotiation")
+    st.markdown("Discover hidden rental opportunities and generate AI-optimized offers")
+    
+    with st.sidebar:
+        st.header("Your Preferences")
+        city = st.text_input("City", "Austin")
+        state = st.text_input("State", "TX")
+        max_budget = st.number_input("Max Budget ($)", 1000, 10000, 2500)
+        min_bedrooms = st.number_input("Min Bedrooms", 1, 5, 1)
+        analyze_btn = st.button("Analyze Market", type="primary")
+    
+    if analyze_btn:
+        with st.spinner("🚀 Scanning rental market for hidden opportunities..."):
+            apartment_iq = ApartmentIQ()
+            user_profile = UserProfile(
+                current_rent=max_budget + 100,
+                lease_expires="March 2025",
+                max_budget=max_budget,
+                work_lat=30.2672,
+                work_lng=-97.7431,
+                preferred_amenities=['gym', 'pet', 'parking'],
+                min_bedrooms=min_bedrooms,
+                max_commute_time=30
+            )
+            results = apartment_iq.run_analysis(city, state)
         
-        # Initialize platform
-        apartment_iq = ApartmentIQ()
+        st.success("Analysis complete!")
         
-        # Run analysis
-        results = apartment_iq.run_analysis()
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Listings", results['total_listings'])
+        col2.metric("Hidden Opportunities", results['hidden_opportunities'])
+        col3.metric("Potential Monthly Savings", 
+                   f"${results['total_potential_monthly_savings']:,}")
         
-        # Print results
-        print("\n" + "="*60)
-        print("APARTMENTIQ ANALYSIS RESULTS")
-        print("="*60)
-        print(f"📊 Total listings analyzed: {results['total_listings']}")
-        print(f"🔍 Hidden opportunities found: {results['hidden_opportunities']}")
-        print(f"🎯 Smart offers generated: {results['smart_offers_generated']}")
-        print(f"💰 Total potential monthly savings: ${results['total_potential_monthly_savings']:,}")
-        print(f"📈 Average success probability: {results['avg_success_probability']:.1%}")
-        
-        print("\n🏆 TOP OPPORTUNITIES:")
-        print("-" * 40)
-        
+        st.subheader("💡 Top AI-Generated Offers")
         for i, offer in enumerate(results['top_offers'], 1):
             savings = offer['original_price'] - offer['recommended_price']
-            print(f"{i}. Property #{offer['property_id']}")
-            print(f"   💵 Asking: ${offer['original_price']:,} → Offer: ${offer['recommended_price']:,}")
-            print(f"   💡 Monthly savings: ${savings:,}")
-            print(f"   📊 Success probability: {offer['success_probability']:.1%}")
-            print(f"   🎯 Strategy: {offer['strategy']}")
-            print()
-    except Exception as e:
-        logger.error(f"Error in main execution: {e}")
-        print(f"Error: {e}")
+            
+            with st.expander(f"Offer #{i}: ${offer['recommended_price']:,} (Save ${savings:,})"):
+                cols = st.columns([1,2])
+                cols[0].metric("Original Price", f"${offer['original_price']:,}")
+                cols[0].metric("Your Savings", f"${savings:,}", 
+                              delta=f"{savings/offer['original_price']:.1%}")
+                cols[1].progress(offer['success_probability'], 
+                               text=f"Success Probability: {offer['success_probability']:.1%}")
+                
+                st.markdown("**Strategy:** " + offer['strategy'])
+                st.markdown("**Key Leverage Points:**")
+                for point in offer['leverage_points']:
+                    st.markdown(f"- {point}")
+                
+                with st.expander("📧 View Email Template"):
+                    st.code(offer['email_template'])
 
-# Only run main if this file is executed directly, not when imported
 if __name__ == "__main__":
-    main()
+    streamlit_app()
