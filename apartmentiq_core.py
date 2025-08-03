@@ -1,4 +1,97 @@
-#!/usr/bin/env python3
+##!/usr/bin/env python3
+"""
+ApartmentIQ: AI-Powered Vacancy & Relocation Platform - Streamlit App
+"""
+import streamlit as st
+import pandas as pd
+import numpy as np
+from datetime import datetime
+from dataclasses import asdict
+import logging
+
+# [Keep all your existing class definitions...]
+# (ApartmentScraper, MarketAnalyzer, AIOfferGenerator, ApartmentIQ classes remain the same)
+
+def streamlit_app():
+    """Main Streamlit application"""
+    st.set_page_config(page_title="ApartmentIQ", layout="wide")
+    
+    # Custom CSS
+    st.markdown("""
+    <style>
+        .st-emotion-cache-1y4p8pa {padding: 2rem 1rem;}
+        .st-emotion-cache-1v0mbdj {border-radius: 8px;}
+        .highlight {background-color: #f5f5f5; padding: 1rem; border-radius: 8px;}
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.title("🏠 ApartmentIQ: AI-Powered Rental Negotiation")
+    st.markdown("Discover hidden rental opportunities and generate AI-optimized offers")
+    
+    with st.sidebar:
+        st.header("Your Preferences")
+        city = st.text_input("City", "Austin")
+        state = st.text_input("State", "TX")
+        max_budget = st.number_input("Max Budget ($)", 1000, 10000, 2500)
+        min_bedrooms = st.number_input("Min Bedrooms", 1, 5, 1)
+        analyze_btn = st.button("Analyze Market", type="primary")
+    
+    if analyze_btn:
+        with st.spinner("🚀 Scanning rental market for hidden opportunities..."):
+            # Initialize platform
+            apartment_iq = ApartmentIQ()
+            
+            # Create user profile from inputs
+            user_profile = UserProfile(
+                current_rent=max_budget + 100,
+                lease_expires="March 2025",
+                max_budget=max_budget,
+                work_lat=30.2672,
+                work_lng=-97.7431,
+                preferred_amenities=['gym', 'pet', 'parking'],
+                min_bedrooms=min_bedrooms,
+                max_commute_time=30
+            )
+            
+            # Run analysis
+            results = apartment_iq.run_analysis(city, state)
+            
+        # Display results
+        st.success("Analysis complete!")
+        
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Listings", results['total_listings'])
+        col2.metric("Hidden Opportunities", results['hidden_opportunities'])
+        col3.metric("Potential Monthly Savings", 
+                   f"${results['total_potential_monthly_savings']:,}")
+        
+        st.subheader("💡 Top AI-Generated Offers")
+        for i, offer in enumerate(results['top_offers'], 1):
+            savings = offer['original_price'] - offer['recommended_price']
+            
+            with st.expander(f"Offer #{i}: ${offer['recommended_price']:,} (Save ${savings:,})"):
+                cols = st.columns([1,2])
+                cols[0].metric("Original Price", f"${offer['original_price']:,}")
+                cols[0].metric("Your Savings", f"${savings:,}", 
+                              delta=f"{savings/offer['original_price']:.1%}")
+                cols[1].progress(offer['success_probability'], 
+                               text=f"Success Probability: {offer['success_probability']:.1%}")
+                
+                st.markdown("**Strategy:** " + offer['strategy'])
+                st.markdown("**Key Leverage Points:**")
+                for point in offer['leverage_points']:
+                    st.markdown(f"- {point}")
+                
+                with st.expander("📧 View Email Template"):
+                    st.code(offer['email_template'])
+
+if __name__ == "__main__":
+    # Initialize logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger(__name__)
+    
+    # Run Streamlit app
+    streamlit_app()!/usr/bin/env python3
 """
 ApartmentIQ: AI-Powered Vacancy & Relocation Platform
 Core data processing and analysis engine - Streamlit Cloud Compatible
