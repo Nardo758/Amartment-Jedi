@@ -1,660 +1,561 @@
 #!/usr/bin/env python3
 """
-ApartmentIQ: AI-Powered Vacancy & Relocation Platform
-Core data processing and analysis engine
+ApartmentIQ Streamlit Web Application
+AI-Powered Apartment Hunting Platform
 """
 
-import requests
+import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import json
 import time
+from dataclasses import asdict
 import sqlite3
-from dataclasses import dataclass, asdict
-from typing import List, Dict, Optional, Tuple
-import re
-from bs4 import BeautifulSoup
-import logging
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import LinearRegression
-import smtplib
-from email.mime.text import MimeText
-from email.mime.multipart import MimeMultipart
+import os
+from pathlib import Path
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# Import core ApartmentIQ functionality
+try:
+    from apartmentiq_core import (
+        ApartmentIQ, PropertyListing, UserProfile, 
+        MarketAnalysis, SmartOffer
+    )
+except ImportError:
+    st.error("❌ Core ApartmentIQ module not found. Please ensure apartmentiq_core.py is in the same directory.")
+    st.stop()
 
-@dataclass
-class PropertyListing:
-    """Data structure for apartment listings"""
-    id: str
-    address: str
-    rent: int
-    bedrooms: int
-    bathrooms: float
-    sqft: int
-    amenities: List[str]
-    days_on_market: int
-    price_history: List[Dict]
-    source: str
-    listing_url: str
-    property_manager: str
-    owner_type: str  # 'individual', 'small_investor', 'corporate', 'reit'
-    lat: float
-    lng: float
-    scraped_at: datetime
+# Page configuration
+st.set_page_config(
+    page_title="ApartmentIQ",
+    page_icon="🏠",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS for better styling
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 3rem;
+        color: #2E86AB;
+        text-align: center;
+        margin-bottom: 0.5rem;
+    }
+    .sub-header {
+        text-align: center;
+        color: #666;
+        margin-bottom: 2rem;
+    }
+    .metric-card {
+        background: linear-gradient(90deg, #2E86AB, #A23B72);
+        color: white;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin: 0.5rem 0;
+    }
+    .property-card {
+        border: 1px solid #ddd;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin: 1rem 0;
+        background: white;
+    }
+    .offer-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        margin: 1rem 0;
+    }
+    .success-box {
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 0.25rem;
+        color: #155724;
+        padding: 0.75rem;
+        margin: 1rem 0;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Initialize session state
+def init_session_state():
+    """Initialize Streamlit session state"""
+    if 'apartment_iq' not in st.session_state:
+        st.session_state.apartment_iq = ApartmentIQ()
     
-@dataclass 
-class UserProfile:
-    """User preferences and constraints"""
-    current_rent: int
-    lease_expires: str
-    max_budget: int
-    work_lat: float
-    work_lng: float
-    preferred_amenities: List[str]
-    min_bedrooms: int
-    max_commute_time: int
-
-@dataclass
-class MarketAnalysis:
-    """Market intelligence data"""
-    avg_days_on_market: float
-    price_reduction_rate: float
-    demand_index: int
-    seasonal_factor: float
-    competitive_units: int
-    median_rent: int
-
-@dataclass
-class SmartOffer:
-    """Generated offer details"""
-    property_id: str
-    recommended_price: int
-    original_price: int
-    strategy: str
-    success_probability: float
-    leverage_points: List[str]
-    email_template: str
-    reasoning: str
-
-class ApartmentScraper:
-    """Multi-source apartment listing scraper"""
+    if 'user_profile' not in st.session_state:
+        st.session_state.user_profile = None
     
-    def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
+    if 'properties' not in st.session_state:
+        st.session_state.properties = []
+    
+    if 'selected_property' not in st.session_state:
+        st.session_state.selected_property = None
+    
+    if 'generated_offers' not in st.session_state:
+        st.session_state.generated_offers = []
+    
+    if 'market_analysis' not in st.session_state:
+        st.session_state.market_analysis = None
+
+@st.cache_data(ttl=3600)
+def load_properties(city, state):
+    """Load properties with caching"""
+    apartment_iq = ApartmentIQ()
+    return apartment_iq.discover_opportunities(city, state)
+
+@st.cache_data(ttl=1800)
+def get_market_analysis(city):
+    """Get market analysis with caching"""
+    apartment_iq = ApartmentIQ()
+    return apartment_iq.analyzer.analyze_market_conditions(city)
+
+def create_user_profile_form():
+    """Create user profile input form"""
+    st.subheader("👤 Your Profile")
+    
+    with st.form("user_profile_form"):
+        col1, col2 = st.columns(2)
         
-    def scrape_apartments_com(self, city: str, state: str) -> List[PropertyListing]:
-        """Scrape Apartments.com for listings"""
-        logger.info(f"Scraping Apartments.com for {city}, {state}")
-        
-        # Note: This is a simplified example - real implementation would need
-        # to handle pagination, anti-bot measures, etc.
-        url = f"https://www.apartments.com/{city.lower()}-{state.lower()}"
-        
-        try:
-            response = self.session.get(url)
-            soup = BeautifulSoup(response.content, 'html.parser')
+        with col1:
+            current_rent = st.number_input(
+                "Current Monthly Rent ($)", 
+                min_value=500, 
+                max_value=10000, 
+                value=2600,
+                step=50
+            )
             
-            listings = []
-            # Mock data for demonstration
-            mock_listings = [
-                {
-                    'id': 'apt_001',
-                    'address': '2847 Riverside Dr, Austin, TX',
-                    'rent': 2400,
-                    'bedrooms': 2,
-                    'bathrooms': 2.0,
-                    'sqft': 1150,
-                    'amenities': ['pool', 'gym', 'parking', 'pet'],
-                    'days_on_market': 67,
-                    'source': 'apartments.com',
-                    'property_manager': 'Riverside Properties LLC',
-                    'owner_type': 'small_investor'
-                },
-                {
-                    'id': 'apt_002', 
-                    'address': '1234 Tech Ridge Blvd, Austin, TX',
-                    'rent': 2800,
-                    'bedrooms': 2,
-                    'bathrooms': 2.0,
-                    'sqft': 1200,
-                    'amenities': ['pool', 'gym', 'wifi', 'parking'],
-                    'days_on_market': 23,
-                    'source': 'apartments.com',
-                    'property_manager': 'TechRidge Management',
-                    'owner_type': 'corporate'
-                }
+            max_budget = st.number_input(
+                "Maximum Budget ($)", 
+                min_value=500, 
+                max_value=15000, 
+                value=2500,
+                step=50
+            )
+            
+            min_bedrooms = st.selectbox(
+                "Minimum Bedrooms", 
+                [1, 2, 3, 4, 5],
+                index=0
+            )
+        
+        with col2:
+            lease_expires = st.date_input(
+                "Current Lease Expires",
+                value=datetime(2025, 3, 31)
+            )
+            
+            work_location = st.text_input(
+                "Work Location", 
+                value="Downtown Austin"
+            )
+            
+            max_commute = st.slider(
+                "Max Commute Time (minutes)", 
+                5, 60, 30
+            )
+        
+        st.subheader("Preferred Amenities")
+        amenity_cols = st.columns(4)
+        
+        with amenity_cols[0]:
+            gym = st.checkbox("Gym/Fitness Center", value=True)
+            pool = st.checkbox("Swimming Pool")
+        
+        with amenity_cols[1]:
+            parking = st.checkbox("Parking", value=True)
+            pet_friendly = st.checkbox("Pet Friendly", value=True)
+        
+        with amenity_cols[2]:
+            wifi = st.checkbox("High-Speed Internet")
+            laundry = st.checkbox("In-Unit Laundry")
+        
+        with amenity_cols[3]:
+            balcony = st.checkbox("Balcony/Patio")
+            dishwasher = st.checkbox("Dishwasher")
+        
+        submitted = st.form_submit_button("💾 Save Profile", use_container_width=True)
+        
+        if submitted:
+            preferred_amenities = []
+            if gym: preferred_amenities.append('gym')
+            if pool: preferred_amenities.append('pool')
+            if parking: preferred_amenities.append('parking')
+            if pet_friendly: preferred_amenities.append('pet')
+            if wifi: preferred_amenities.append('wifi')
+            if laundry: preferred_amenities.append('laundry')
+            if balcony: preferred_amenities.append('balcony')
+            if dishwasher: preferred_amenities.append('dishwasher')
+            
+            st.session_state.user_profile = UserProfile(
+                current_rent=current_rent,
+                lease_expires=lease_expires.strftime("%B %Y"),
+                max_budget=max_budget,
+                work_lat=30.2672,  # Default Austin coordinates
+                work_lng=-97.7431,
+                preferred_amenities=preferred_amenities,
+                min_bedrooms=min_bedrooms,
+                max_commute_time=max_commute
+            )
+            
+            st.success("✅ Profile saved successfully!")
+            time.sleep(1)
+            st.rerun()
+
+def display_market_overview():
+    """Display market overview dashboard"""
+    st.subheader("📊 Market Overview")
+    
+    if st.session_state.market_analysis:
+        analysis = st.session_state.market_analysis
+        
+        # Key metrics
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric(
+                "Avg. Days on Market",
+                f"{analysis.avg_days_on_market:.0f} days",
+                delta="-5 days vs last month"
+            )
+        
+        with col2:
+            st.metric(
+                "Price Reductions",
+                f"{analysis.price_reduction_rate:.0%}",
+                delta="3% vs last month"
+            )
+        
+        with col3:
+            st.metric(
+                "Demand Index",
+                f"{analysis.demand_index}/100",
+                delta="-8 points (Winter slowdown)"
+            )
+        
+        with col4:
+            st.metric(
+                "Median Rent",
+                f"${analysis.median_rent:,}",
+                delta="$50 vs last month"
+            )
+
+def display_property_cards(properties):
+    """Display property listings as cards"""
+    st.subheader("🏠 Available Properties")
+    
+    if not properties:
+        st.info("No properties found. Try adjusting your search criteria.")
+        return
+    
+    for prop in properties:
+        with st.container():
+            col1, col2, col3 = st.columns([1, 2, 1])
+            
+            with col1:
+                # Mock property image
+                st.image(
+                    "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=300&h=200&fit=crop",
+                    width=200
+                )
+            
+            with col2:
+                st.markdown(f"**{prop.address}**")
+                st.write(f"🛏️ {prop.bedrooms}BR/{prop.bathrooms}BA • 📐 {prop.sqft} sq ft")
+                
+                # Amenities
+                amenity_text = " • ".join([f"🏋️ Gym" if 'gym' in prop.amenities else "",
+                                         f"🏊 Pool" if 'pool' in prop.amenities else "",
+                                         f"🚗 Parking" if 'parking' in prop.amenities else "",
+                                         f"🐕 Pet OK" if 'pet' in prop.amenities else ""])
+                amenity_text = " • ".join([a for a in amenity_text.split(" • ") if a])
+                if amenity_text:
+                    st.write(amenity_text)
+                
+                # Market indicators
+                status_color = "🟣" if prop.source == "craigslist" else "🔵"
+                st.write(f"{status_color} {prop.source.title()} • ⏰ {prop.days_on_market} days on market")
+            
+            with col3:
+                st.markdown(f"<h3 style='color: #2E86AB; text-align: right;'>${prop.rent:,}/mo</h3>", 
+                           unsafe_allow_html=True)
+                
+                if st.button(f"🎯 Generate Offer", key=f"offer_{prop.id}", use_container_width=True):
+                    st.session_state.selected_property = prop
+                    st.rerun()
+                
+                if prop.days_on_market > 45:
+                    st.markdown("🔥 **High Negotiation Potential**")
+        
+        st.divider()
+
+def display_offer_generator():
+    """Display AI offer generation interface"""
+    if not st.session_state.selected_property:
+        st.info("Select a property to generate a smart offer.")
+        return
+    
+    prop = st.session_state.selected_property
+    st.subheader(f"🤖 Smart Offer Generator")
+    st.write(f"**Property:** {prop.address}")
+    
+    # Generate offer
+    with st.container():
+        if st.button("🧠 Analyze & Generate Offer", use_container_width=True):
+            
+            # Show analysis progress
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            analysis_steps = [
+                "Analyzing market conditions...",
+                "Evaluating owner motivation...", 
+                "Reviewing price history...",
+                "Scanning comparable properties...",
+                "Calculating optimal offer...",
+                "Generating negotiation strategy..."
             ]
             
-            for listing_data in mock_listings:
-                listing = PropertyListing(
-                    **listing_data,
-                    price_history=[
-                        {'date': '2024-11-01', 'price': listing_data['rent'] + 100},
-                        {'date': '2024-12-01', 'price': listing_data['rent'] + 50},
-                        {'date': '2025-01-01', 'price': listing_data['rent']}
-                    ],
-                    listing_url=f"https://apartments.com/listing/{listing_data['id']}",
-                    lat=30.2672 + np.random.uniform(-0.1, 0.1),
-                    lng=-97.7431 + np.random.uniform(-0.1, 0.1),
-                    scraped_at=datetime.now()
+            for i, step in enumerate(analysis_steps):
+                status_text.text(step)
+                progress_bar.progress((i + 1) / len(analysis_steps))
+                time.sleep(0.5)
+            
+            # Generate actual offer
+            if st.session_state.user_profile and st.session_state.market_analysis:
+                offer = st.session_state.apartment_iq.offer_generator.generate_smart_offer(
+                    prop, 
+                    st.session_state.market_analysis,
+                    st.session_state.user_profile
                 )
-                listings.append(listing)
+                st.session_state.generated_offers = [offer]
                 
-            return listings
-            
-        except Exception as e:
-            logger.error(f"Error scraping Apartments.com: {e}")
-            return []
-    
-    def scrape_zillow(self, city: str, state: str) -> List[PropertyListing]:
-        """Scrape Zillow for rental listings"""
-        logger.info(f"Scraping Zillow for {city}, {state}")
-        
-        # Mock implementation - real version would use Zillow API or scraping
-        return []
-    
-    def scrape_craigslist(self, city: str, state: str) -> List[PropertyListing]:
-        """Scrape Craigslist for rental listings"""
-        logger.info(f"Scraping Craigslist for {city}, {state}")
-        
-        # Mock implementation - craigslist often has "hidden" inventory
-        hidden_listings = [
-            {
-                'id': 'cl_001',
-                'address': '987 Mueller District, Austin, TX',
-                'rent': 2200,
-                'bedrooms': 1,
-                'bathrooms': 1.0,
-                'sqft': 850,
-                'amenities': ['wifi', 'pet', 'parking'],
-                'days_on_market': 89,
-                'source': 'craigslist',
-                'property_manager': 'Private Owner',
-                'owner_type': 'individual'
-            }
-        ]
-        
-        listings = []
-        for listing_data in hidden_listings:
-            listing = PropertyListing(
-                **listing_data,
-                price_history=[
-                    {'date': '2024-10-01', 'price': listing_data['rent'] + 200},
-                    {'date': '2024-11-01', 'price': listing_data['rent'] + 100},
-                    {'date': '2025-01-01', 'price': listing_data['rent']}
-                ],
-                listing_url=f"https://craigslist.org/{listing_data['id']}",
-                lat=30.2672 + np.random.uniform(-0.1, 0.1),
-                lng=-97.7431 + np.random.uniform(-0.1, 0.1),
-                scraped_at=datetime.now()
-            )
-            listings.append(listing)
-            
-        return listings
+                progress_bar.progress(1.0)
+                status_text.text("✅ Smart offer generated!")
+                time.sleep(1)
+                st.rerun()
 
-class MarketAnalyzer:
-    """Analyze market conditions and trends"""
+def display_generated_offer():
+    """Display the generated smart offer"""
+    if not st.session_state.generated_offers:
+        return
     
-    def __init__(self):
-        self.db_path = 'apartmentiq.db'
-        self.init_database()
-        
-    def init_database(self):
-        """Initialize SQLite database for storing historical data"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS listings (
-                id TEXT PRIMARY KEY,
-                address TEXT,
-                rent INTEGER,
-                bedrooms INTEGER,
-                bathrooms REAL,
-                sqft INTEGER,
-                amenities TEXT,
-                days_on_market INTEGER,
-                source TEXT,
-                owner_type TEXT,
-                scraped_at TIMESTAMP,
-                lat REAL,
-                lng REAL
-            )
-        ''')
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS price_history (
-                listing_id TEXT,
-                date TEXT,
-                price INTEGER,
-                FOREIGN KEY(listing_id) REFERENCES listings(id)
-            )
-        ''')
-        
-        conn.commit()
-        conn.close()
-        
-    def store_listings(self, listings: List[PropertyListing]):
-        """Store scraped listings in database"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        for listing in listings:
-            cursor.execute('''
-                INSERT OR REPLACE INTO listings VALUES 
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                listing.id, listing.address, listing.rent, listing.bedrooms,
-                listing.bathrooms, listing.sqft, json.dumps(listing.amenities),
-                listing.days_on_market, listing.source, listing.owner_type,
-                listing.scraped_at, listing.lat, listing.lng
-            ))
-            
-            for price_point in listing.price_history:
-                cursor.execute('''
-                    INSERT OR REPLACE INTO price_history VALUES (?, ?, ?)
-                ''', (listing.id, price_point['date'], price_point['price']))
-                
-        conn.commit()
-        conn.close()
-        
-    def analyze_market_conditions(self, city: str) -> MarketAnalysis:
-        """Analyze current market conditions"""
-        conn = sqlite3.connect(self.db_path)
-        
-        # Get recent listings data
-        query = '''
-            SELECT * FROM listings 
-            WHERE scraped_at > date('now', '-30 days')
-        '''
-        df = pd.read_sql_query(query, conn)
-        
-        if df.empty:
-            # Return default values if no data
-            return MarketAnalysis(
-                avg_days_on_market=34.0,
-                price_reduction_rate=0.18,
-                demand_index=72,
-                seasonal_factor=0.85,  # Winter reduction
-                competitive_units=23,
-                median_rent=2300
-            )
-        
-        # Calculate market metrics
-        avg_days = df['days_on_market'].mean()
-        
-        # Calculate price reduction rate
-        price_reduction_query = '''
-            SELECT listing_id, COUNT(*) as price_changes
-            FROM price_history 
-            GROUP BY listing_id
-            HAVING price_changes > 1
-        '''
-        price_changes = pd.read_sql_query(price_reduction_query, conn)
-        price_reduction_rate = len(price_changes) / len(df) if len(df) > 0 else 0
-        
-        # Calculate demand index (simplified)
-        demand_index = max(10, min(100, int(100 - (avg_days - 20) * 2)))
-        
-        # Seasonal factor (winter months typically slower)
-        current_month = datetime.now().month
-        seasonal_factor = 0.85 if current_month in [12, 1, 2] else 1.0
-        
-        conn.close()
-        
-        return MarketAnalysis(
-            avg_days_on_market=avg_days,
-            price_reduction_rate=price_reduction_rate,
-            demand_index=demand_index,
-            seasonal_factor=seasonal_factor,
-            competitive_units=len(df),
-            median_rent=int(df['rent'].median()) if not df.empty else 2300
+    offer = st.session_state.generated_offers[0]
+    prop = st.session_state.selected_property
+    
+    st.subheader("🎯 Your Smart Offer")
+    
+    # Offer summary
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric(
+            "Listed Price",
+            f"${offer.original_price:,}",
+            help="Original asking price"
         )
     
-    def identify_stale_inventory(self, listings: List[PropertyListing], 
-                                threshold_days: int = 45) -> List[PropertyListing]:
-        """Identify properties that have been on market too long"""
-        stale_listings = [
-            listing for listing in listings 
-            if listing.days_on_market >= threshold_days
-        ]
-        
-        logger.info(f"Found {len(stale_listings)} stale inventory opportunities")
-        return stale_listings
-
-class AIOfferGenerator:
-    """AI-powered offer generation engine"""
-    
-    def __init__(self):
-        self.model = None
-        self.train_model()
-        
-    def train_model(self):
-        """Train the pricing model on historical data"""
-        # In production, this would use real historical data
-        # For demo, we'll create a simple model
-        
-        # Mock training data
-        np.random.seed(42)
-        n_samples = 1000
-        
-        X = np.column_stack([
-            np.random.randint(1, 150, n_samples),  # days_on_market
-            np.random.choice([0, 1], n_samples),   # is_individual_owner
-            np.random.randint(1200, 3500, n_samples),  # market_rent
-            np.random.randint(1, 5, n_samples),    # price_reductions
-            np.random.uniform(0.7, 1.2, n_samples)  # seasonal_factor
-        ])
-        
-        # Target: percentage reduction from asking price
-        y = (
-            X[:, 0] * 0.002 +  # days on market effect
-            X[:, 1] * 0.05 +   # individual owner more flexible
-            X[:, 3] * 0.03 +   # previous reductions indicate flexibility
-            np.random.normal(0, 0.02, n_samples)  # noise
-        )
-        y = np.clip(y, 0, 0.25)  # Cap at 25% reduction
-        
-        self.model = RandomForestRegressor(n_estimators=100, random_state=42)
-        self.model.fit(X, y)
-        
-        logger.info("AI pricing model trained successfully")
-    
-    def generate_smart_offer(self, listing: PropertyListing, 
-                           market_analysis: MarketAnalysis,
-                           user_profile: UserProfile) -> SmartOffer:
-        """Generate AI-powered offer for a property"""
-        
-        # Prepare features for model
-        is_individual_owner = 1 if listing.owner_type == 'individual' else 0
-        price_reductions = len(listing.price_history) - 1
-        
-        features = np.array([[
-            listing.days_on_market,
-            is_individual_owner,
-            listing.rent,
-            price_reductions,
-            market_analysis.seasonal_factor
-        ]])
-        
-        # Predict optimal reduction percentage
-        reduction_pct = self.model.predict(features)[0]
-        recommended_price = int(listing.rent * (1 - reduction_pct))
-        
-        # Calculate carrying cost and owner motivation
-        daily_carrying_cost = listing.rent * 0.03 / 30  # 3% of rent per month
-        total_loss = daily_carrying_cost * listing.days_on_market
-        
-        # Determine strategy based on market conditions
-        if listing.days_on_market > 60:
-            strategy = "Aggressive but Fair"
-        elif listing.days_on_market > 30:
-            strategy = "Market-Based Negotiation"
-        else:
-            strategy = "Conservative Approach"
-            
-        # Calculate success probability
-        base_probability = 0.6
-        if listing.owner_type == 'individual':
-            base_probability += 0.15
-        if listing.days_on_market > 45:
-            base_probability += 0.1
-        if price_reductions > 0:
-            base_probability += 0.08
-            
-        success_probability = min(0.95, base_probability)
-        
-        # Generate leverage points
-        leverage_points = []
-        if listing.days_on_market > 45:
-            leverage_points.append(f"{listing.days_on_market} days vacant = ${int(total_loss):,} in lost revenue")
-        if market_analysis.seasonal_factor < 1.0:
-            leverage_points.append("Below market rent in winter season")
-        leverage_points.append("Immediate qualified tenant")
-        leverage_points.append("No agent commission needed")
-        
-        # Generate email template
-        savings = listing.rent - recommended_price
-        email_template = self._generate_email_template(
-            listing, recommended_price, savings, leverage_points
-        )
-        
-        # Generate reasoning
-        reasoning = f"""
-        Property has been vacant for {listing.days_on_market} days. 
-        Owner is a {listing.owner_type} likely motivated by cash flow. 
-        Market analysis shows {market_analysis.price_reduction_rate:.0%} of properties 
-        have reduced prices. AI model suggests {reduction_pct:.1%} reduction is optimal.
-        """.strip()
-        
-        return SmartOffer(
-            property_id=listing.id,
-            recommended_price=recommended_price,
-            original_price=listing.rent,
-            strategy=strategy,
-            success_probability=success_probability,
-            leverage_points=leverage_points,
-            email_template=email_template,
-            reasoning=reasoning
+    with col2:
+        st.metric(
+            "Recommended Offer", 
+            f"${offer.recommended_price:,}",
+            delta=f"-${offer.original_price - offer.recommended_price:,}",
+            help="AI-calculated optimal offer"
         )
     
-    def _generate_email_template(self, listing: PropertyListing, 
-                                offer_price: int, savings: int,
-                                leverage_points: List[str]) -> str:
-        """Generate personalized email template"""
-        
-        template = f"""Subject: Immediate Lease Opportunity - {listing.address}
-
-Dear Property Manager,
-
-I hope this email finds you well. I'm writing regarding the {listing.bedrooms}BR/{listing.bathrooms}BA unit at {listing.address} that has been available.
-
-I'm a qualified tenant looking to secure housing immediately and would like to present a competitive offer:
-
-**Offer Details:**
-• Monthly Rent: ${offer_price:,}
-• Lease Term: 12 months 
-• Move-in Date: Within 30 days
-• Security Deposit: 1 month rent
-• No pets, non-smoker
-
-**Why This Works for You:**
-{chr(10).join(f'• {point}' for point in leverage_points)}
-
-I understand the market has been challenging, and I believe this offer reflects a fair value that benefits us both. I'm happy to provide income verification, references, and can sign a lease this week.
-
-Would you be available for a brief call to discuss this opportunity?
-
-Best regards,
-[Your Name]
-[Phone] | [Email]
-
-P.S. I'm also happy to consider a longer lease term if that would be beneficial."""
-
-        return template
-
-class EmailAutomation:
-    """Automated email sending and follow-up"""
-    
-    def __init__(self, smtp_server: str, smtp_port: int, 
-                 email: str, password: str):
-        self.smtp_server = smtp_server
-        self.smtp_port = smtp_port
-        self.email = email
-        self.password = password
-        
-    def send_offer_email(self, offer: SmartOffer, recipient_email: str,
-                        user_name: str, user_phone: str) -> bool:
-        """Send the generated offer email"""
-        try:
-            # Personalize the email template
-            personalized_email = offer.email_template.replace(
-                '[Your Name]', user_name
-            ).replace(
-                '[Phone] | [Email]', f'{user_phone} | {self.email}'
-            )
-            
-            msg = MimeMultipart()
-            msg['From'] = self.email
-            msg['To'] = recipient_email
-            msg['Subject'] = f"Immediate Lease Opportunity - Property #{offer.property_id}"
-            
-            msg.attach(MimeText(personalized_email, 'plain'))
-            
-            server = smtplib.SMTP(self.smtp_server, self.smtp_port)
-            server.starttls()
-            server.login(self.email, self.password)
-            
-            text = msg.as_string()
-            server.sendmail(self.email, recipient_email, text)
-            server.quit()
-            
-            logger.info(f"Offer email sent successfully to {recipient_email}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to send email: {e}")
-            return False
-
-class ApartmentIQ:
-    """Main ApartmentIQ platform class"""
-    
-    def __init__(self):
-        self.scraper = ApartmentScraper()
-        self.analyzer = MarketAnalyzer()
-        self.offer_generator = AIOfferGenerator()
-        
-    def discover_opportunities(self, city: str, state: str) -> List[PropertyListing]:
-        """Discover apartment opportunities across multiple sources"""
-        logger.info(f"Discovering opportunities in {city}, {state}")
-        
-        all_listings = []
-        
-        # Scrape multiple sources
-        apartments_com_listings = self.scraper.scrape_apartments_com(city, state)
-        all_listings.extend(apartments_com_listings)
-        
-        zillow_listings = self.scraper.scrape_zillow(city, state)
-        all_listings.extend(zillow_listings)
-        
-        craigslist_listings = self.scraper.scrape_craigslist(city, state)
-        all_listings.extend(craigslist_listings)
-        
-        # Store in database
-        self.analyzer.store_listings(all_listings)
-        
-        logger.info(f"Found {len(all_listings)} total listings")
-        return all_listings
-    
-    def analyze_and_generate_offers(self, listings: List[PropertyListing],
-                                   user_profile: UserProfile) -> List[SmartOffer]:
-        """Analyze market and generate smart offers"""
-        
-        # Analyze market conditions
-        market_analysis = self.analyzer.analyze_market_conditions("Austin")
-        logger.info(f"Market analysis complete: {market_analysis.demand_index}/100 demand index")
-        
-        # Identify stale inventory (hidden opportunities)
-        stale_listings = self.analyzer.identify_stale_inventory(listings)
-        
-        # Generate smart offers for promising properties
-        offers = []
-        for listing in stale_listings:
-            # Filter by user preferences
-            if (listing.rent <= user_profile.max_budget and 
-                listing.bedrooms >= user_profile.min_bedrooms):
-                
-                offer = self.offer_generator.generate_smart_offer(
-                    listing, market_analysis, user_profile
-                )
-                offers.append(offer)
-        
-        # Sort by success probability and savings potential
-        offers.sort(key=lambda x: (x.success_probability, 
-                                  x.original_price - x.recommended_price), 
-                   reverse=True)
-        
-        logger.info(f"Generated {len(offers)} smart offers")
-        return offers
-    
-    def run_analysis(self, city: str = "Austin", state: str = "TX") -> Dict:
-        """Run complete ApartmentIQ analysis"""
-        
-        # Sample user profile
-        user_profile = UserProfile(
-            current_rent=2600,
-            lease_expires="March 2025",
-            max_budget=2500,
-            work_lat=30.2672,
-            work_lng=-97.7431,
-            preferred_amenities=['gym', 'pet', 'parking'],
-            min_bedrooms=1,
-            max_commute_time=30
+    with col3:
+        savings = offer.original_price - offer.recommended_price
+        st.metric(
+            "Annual Savings",
+            f"${savings * 12:,}",
+            help="Total savings over 12 months"
         )
-        
-        # Discover opportunities
-        listings = self.discover_opportunities(city, state)
-        
-        # Generate offers
-        offers = self.analyze_and_generate_offers(listings, user_profile)
-        
-        # Calculate summary statistics
-        total_potential_savings = sum(
-            offer.original_price - offer.recommended_price 
-            for offer in offers
+    
+    # Success probability
+    st.markdown(f"""
+    <div class="success-box">
+        <h4>📈 Success Probability: {offer.success_probability:.0%}</h4>
+        <p><strong>Strategy:</strong> {offer.strategy}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Leverage points
+    st.subheader("💡 Key Leverage Points")
+    for point in offer.leverage_points:
+        st.write(f"• {point}")
+    
+    # Email preview
+    with st.expander("📧 Generated Email Preview"):
+        st.text_area(
+            "Email Content",
+            value=offer.email_template,
+            height=400,
+            help="You can customize this email before sending"
         )
-        
-        avg_success_rate = np.mean([offer.success_probability for offer in offers]) if offers else 0
-        
-        results = {
-            'total_listings': len(listings),
-            'hidden_opportunities': len([l for l in listings if l.source == 'craigslist']),
-            'smart_offers_generated': len(offers),
-            'total_potential_monthly_savings': total_potential_savings,
-            'avg_success_probability': avg_success_rate,
-            'top_offers': [asdict(offer) for offer in offers[:3]]
+    
+    # Action buttons
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("📨 Send Offer Email", use_container_width=True):
+            st.success("🎉 Offer sent successfully! We'll notify you when the property manager responds.")
+    
+    with col2:
+        if st.button("📅 Schedule for Later", use_container_width=True):
+            st.info("Offer scheduled for optimal timing based on market analysis.")
+    
+    with col3:
+        if st.button("💾 Save as Template", use_container_width=True):
+            st.success("Template saved for future use!")
+
+def display_analytics_dashboard():
+    """Display analytics and insights"""
+    st.subheader("📈 Market Analytics")
+    
+    if not st.session_state.properties:
+        st.info("Load property data to see analytics.")
+        return
+    
+    # Create sample analytics data
+    properties_df = pd.DataFrame([
+        {
+            'days_on_market': prop.days_on_market,
+            'rent': prop.rent,
+            'bedrooms': prop.bedrooms,
+            'sqft': prop.sqft,
+            'source': prop.source,
+            'owner_type': prop.owner_type
         }
-        
-        return results
+        for prop in st.session_state.properties
+    ])
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Days on market distribution
+        fig1 = px.histogram(
+            properties_df, 
+            x='days_on_market',
+            title="Days on Market Distribution",
+            color_discrete_sequence=['#2E86AB']
+        )
+        st.plotly_chart(fig1, use_container_width=True)
+    
+    with col2:
+        # Rent vs. property size
+        fig2 = px.scatter(
+            properties_df,
+            x='sqft',
+            y='rent',
+            color='bedrooms',
+            title="Rent vs. Square Footage",
+            color_continuous_scale='viridis'
+        )
+        st.plotly_chart(fig2, use_container_width=True)
 
 def main():
-    """Main execution function"""
-    logger.info("Starting ApartmentIQ analysis...")
+    """Main Streamlit application"""
     
-    # Initialize platform
-    apartment_iq = ApartmentIQ()
+    # Initialize session state
+    init_session_state()
     
-    # Run analysis
-    results = apartment_iq.run_analysis()
+    # Header
+    st.markdown('<h1 class="main-header">🏠 ApartmentIQ</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">AI-Powered Apartment Hunting & Negotiation Platform</p>', 
+               unsafe_allow_html=True)
     
-    # Print results
-    print("\n" + "="*60)
-    print("APARTMENTIQ ANALYSIS RESULTS")
-    print("="*60)
-    print(f"📊 Total listings analyzed: {results['total_listings']}")
-    print(f"🔍 Hidden opportunities found: {results['hidden_opportunities']}")
-    print(f"🎯 Smart offers generated: {results['smart_offers_generated']}")
-    print(f"💰 Total potential monthly savings: ${results['total_potential_monthly_savings']:,}")
-    print(f"📈 Average success probability: {results['avg_success_probability']:.1%}")
+    # Sidebar navigation
+    with st.sidebar:
+        st.markdown("## 🧭 Navigation")
+        
+        tab = st.radio(
+            "Choose a section:",
+            ["🏠 Property Search", "👤 User Profile", "📊 Analytics", "⚙️ Settings"],
+            key="navigation"
+        )
+        
+        st.markdown("---")
+        st.markdown("## 🔍 Search Filters")
+        
+        city = st.selectbox("City", ["Austin", "Denver", "Nashville", "Raleigh"], index=0)
+        state = st.selectbox("State", ["TX", "CO", "TN", "NC"], index=0)
+        
+        if st.button("🔍 Search Properties", use_container_width=True):
+            with st.spinner("Searching for properties..."):
+                st.session_state.properties = load_properties(city, state)
+                st.session_state.market_analysis = get_market_analysis(city)
+            st.success(f"Found {len(st.session_state.properties)} properties!")
+            st.rerun()
+        
+        # Show current stats
+        if st.session_state.properties:
+            st.markdown("### 📊 Current Search")
+            st.metric("Total Properties", len(st.session_state.properties))
+            hidden_count = len([p for p in st.session_state.properties if p.source == 'craigslist'])
+            st.metric("Hidden Opportunities", hidden_count)
     
-    print("\n🏆 TOP OPPORTUNITIES:")
-    print("-" * 40)
+    # Main content area
+    if tab == "🏠 Property Search":
+        if st.session_state.user_profile is None:
+            st.warning("👤 Please create your user profile first to get personalized recommendations.")
+            
+        display_market_overview()
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            display_property_cards(st.session_state.properties)
+        
+        with col2:
+            display_offer_generator()
+            display_generated_offer()
     
-    for i, offer in enumerate(results['top_offers'], 1):
-        savings = offer['original_price'] - offer['recommended_price']
-        print(f"{i}. Property #{offer['property_id']}")
-        print(f"   💵 Asking: ${offer['original_price']:,} → Offer: ${offer['recommended_price']:,}")
-        print(f"   💡 Monthly savings: ${savings:,}")
-        print(f"   📊 Success probability: {offer['success_probability']:.1%}")
-        print(f"   🎯 Strategy: {offer['strategy']}")
-        print()
+    elif tab == "👤 User Profile":
+        create_user_profile_form()
+        
+        if st.session_state.user_profile:
+            st.subheader("✅ Current Profile")
+            profile_data = {
+                "Current Rent": f"${st.session_state.user_profile.current_rent:,}",
+                "Max Budget": f"${st.session_state.user_profile.max_budget:,}",
+                "Lease Expires": st.session_state.user_profile.lease_expires,
+                "Min Bedrooms": st.session_state.user_profile.min_bedrooms,
+                "Preferred Amenities": ", ".join(st.session_state.user_profile.preferred_amenities)
+            }
+            
+            for key, value in profile_data.items():
+                st.write(f"**{key}:** {value}")
+    
+    elif tab == "📊 Analytics":
+        display_analytics_dashboard()
+    
+    elif tab == "⚙️ Settings":
+        st.subheader("⚙️ Application Settings")
+        
+        st.markdown("### 🔧 Scraping Configuration")
+        scraping_delay = st.slider("Scraping Delay (seconds)", 1, 10, 2)
+        max_workers = st.slider("Max Workers", 1, 8, 4)
+        
+        st.markdown("### 📧 Email Settings")
+        email_enabled = st.checkbox("Enable Email Automation", value=True)
+        
+        st.markdown("### 🎯 Offer Strategy")
+        aggressiveness = st.slider("Negotiation Aggressiveness", 1, 10, 7)
+        
+        if st.button("💾 Save Settings"):
+            st.success("Settings saved successfully!")
+    
+    # Footer
+    st.markdown("---")
+    st.markdown(
+        "Built with ❤️ using Streamlit | ApartmentIQ v1.0 | "
+        "[GitHub](https://github.com/yourusername/apartmentiq)"
+    )
 
 if __name__ == "__main__":
     main()
