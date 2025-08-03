@@ -1,34 +1,18 @@
-
-# ApartmentIQ Streamlit Requirements
-# Install with: pip install -r requirements.txt
+# ApartmentIQ Streamlit Cloud Requirements
+# Minimal requirements for Streamlit Cloud deployment
 
 # Core Dependencies (Required)
-requests>=2.31.0
+streamlit>=1.28.0
 pandas>=2.0.0
 numpy>=1.24.0
+requests>=2.31.0
 beautifulsoup4>=4.12.0
 scikit-learn>=1.3.0
 
-# Streamlit and UI
-streamlit>=1.28.0
+# Visualization
 plotly>=5.15.0
-altair>=5.0.0
+matplotlib>=3.7.0
 
-# Optional Dependencies (Recommended)
-python-dotenv>=1.0.0     # Environment variables
-selenium>=4.15.0         # Advanced scraping
-matplotlib>=3.7.0        # Data visualization
-seaborn>=0.12.0         # Statistical plots
-lxml>=4.9.0             # XML/HTML parser
-
-# Streamlit Enhancements (Optional)
-streamlit-option-menu>=0.3.6    # Better navigation
-streamlit-folium>=0.15.0        # Interactive maps
-streamlit-aggrid>=0.3.4         # Advanced tables
-streamlit-lottie>=0.0.5         # Animations
-
-# Production Dependencies (For Scaling)
-redis>=4.5.0            # Caching
-celery>=5.3.0           # Background tasks
-gunicorn>=21.2.0        # Web server
-psycopg2-binary>=2.9.0  # PostgreSQL
+# Optional (install only if needed)
+python-dotenv>=1.0.0
+lxml>=4.9.0
