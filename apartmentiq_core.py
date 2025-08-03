@@ -10,7 +10,6 @@ import numpy as np
 from datetime import datetime, timedelta
 import json
 import time
-import sqlite3
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Optional, Tuple
 import re
@@ -188,71 +187,16 @@ class ApartmentScraper:
         return listings
 
 class MarketAnalyzer:
-    """Analyze market conditions and trends"""
+    """Analyze market conditions and trends - Streamlit Cloud Compatible"""
     
     def __init__(self):
-        # Use in-memory database for Streamlit Cloud compatibility
-        self.db_path = ':memory:'
-        self.init_database()
-        
-    def init_database(self):
-        """Initialize in-memory SQLite database"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS listings (
-                id TEXT PRIMARY KEY,
-                address TEXT,
-                rent INTEGER,
-                bedrooms INTEGER,
-                bathrooms REAL,
-                sqft INTEGER,
-                amenities TEXT,
-                days_on_market INTEGER,
-                source TEXT,
-                owner_type TEXT,
-                scraped_at TIMESTAMP,
-                lat REAL,
-                lng REAL
-            )
-        ''')
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS price_history (
-                listing_id TEXT,
-                date TEXT,
-                price INTEGER,
-                FOREIGN KEY(listing_id) REFERENCES listings(id)
-            )
-        ''')
-        
-        conn.commit()
-        conn.close()
+        # Store data in memory instead of database for Streamlit Cloud
+        self.listings_data = []
         
     def store_listings(self, listings: List[PropertyListing]):
-        """Store scraped listings in database"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        for listing in listings:
-            cursor.execute('''
-                INSERT OR REPLACE INTO listings VALUES 
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                listing.id, listing.address, listing.rent, listing.bedrooms,
-                listing.bathrooms, listing.sqft, json.dumps(listing.amenities),
-                listing.days_on_market, listing.source, listing.owner_type,
-                listing.scraped_at, listing.lat, listing.lng
-            ))
-            
-            for price_point in listing.price_history:
-                cursor.execute('''
-                    INSERT OR REPLACE INTO price_history VALUES (?, ?, ?)
-                ''', (listing.id, price_point['date'], price_point['price']))
-                
-        conn.commit()
-        conn.close()
+        """Store scraped listings in memory"""
+        self.listings_data = listings
+        logger.info(f"Stored {len(listings)} listings in memory")
         
     def analyze_market_conditions(self, city: str) -> MarketAnalysis:
         """Analyze current market conditions"""
@@ -448,7 +392,7 @@ class ApartmentIQ:
         craigslist_listings = self.scraper.scrape_craigslist(city, state)
         all_listings.extend(craigslist_listings)
         
-        # Store in database
+        # Store in memory instead of database
         self.analyzer.store_listings(all_listings)
         
         logger.info(f"Found {len(all_listings)} total listings")
@@ -526,36 +470,41 @@ class ApartmentIQ:
         return results
 
 def main():
-    """Main execution function"""
-    logger.info("Starting ApartmentIQ analysis...")
-    
-    # Initialize platform
-    apartment_iq = ApartmentIQ()
-    
-    # Run analysis
-    results = apartment_iq.run_analysis()
-    
-    # Print results
-    print("\n" + "="*60)
-    print("APARTMENTIQ ANALYSIS RESULTS")
-    print("="*60)
-    print(f"📊 Total listings analyzed: {results['total_listings']}")
-    print(f"🔍 Hidden opportunities found: {results['hidden_opportunities']}")
-    print(f"🎯 Smart offers generated: {results['smart_offers_generated']}")
-    print(f"💰 Total potential monthly savings: ${results['total_potential_monthly_savings']:,}")
-    print(f"📈 Average success probability: {results['avg_success_probability']:.1%}")
-    
-    print("\n🏆 TOP OPPORTUNITIES:")
-    print("-" * 40)
-    
-    for i, offer in enumerate(results['top_offers'], 1):
-        savings = offer['original_price'] - offer['recommended_price']
-        print(f"{i}. Property #{offer['property_id']}")
-        print(f"   💵 Asking: ${offer['original_price']:,} → Offer: ${offer['recommended_price']:,}")
-        print(f"   💡 Monthly savings: ${savings:,}")
-        print(f"   📊 Success probability: {offer['success_probability']:.1%}")
-        print(f"   🎯 Strategy: {offer['strategy']}")
-        print()
+    """Main execution function - for testing only"""
+    try:
+        logger.info("Starting ApartmentIQ analysis...")
+        
+        # Initialize platform
+        apartment_iq = ApartmentIQ()
+        
+        # Run analysis
+        results = apartment_iq.run_analysis()
+        
+        # Print results
+        print("\n" + "="*60)
+        print("APARTMENTIQ ANALYSIS RESULTS")
+        print("="*60)
+        print(f"📊 Total listings analyzed: {results['total_listings']}")
+        print(f"🔍 Hidden opportunities found: {results['hidden_opportunities']}")
+        print(f"🎯 Smart offers generated: {results['smart_offers_generated']}")
+        print(f"💰 Total potential monthly savings: ${results['total_potential_monthly_savings']:,}")
+        print(f"📈 Average success probability: {results['avg_success_probability']:.1%}")
+        
+        print("\n🏆 TOP OPPORTUNITIES:")
+        print("-" * 40)
+        
+        for i, offer in enumerate(results['top_offers'], 1):
+            savings = offer['original_price'] - offer['recommended_price']
+            print(f"{i}. Property #{offer['property_id']}")
+            print(f"   💵 Asking: ${offer['original_price']:,} → Offer: ${offer['recommended_price']:,}")
+            print(f"   💡 Monthly savings: ${savings:,}")
+            print(f"   📊 Success probability: {offer['success_probability']:.1%}")
+            print(f"   🎯 Strategy: {offer['strategy']}")
+            print()
+    except Exception as e:
+        logger.error(f"Error in main execution: {e}")
+        print(f"Error: {e}")
 
+# Only run main if this file is executed directly, not when imported
 if __name__ == "__main__":
     main()
